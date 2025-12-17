@@ -49,6 +49,7 @@ Web-версия работает только через WebSSH Gateway:
 
 - Rust: `ssh-core` (SSH PTY, SFTP, forwarding, host key verify, ssh_config parsing)
 - SSH библиотека: `russh` (см. `docs/decision-log.md` D-001)
+- Отпечаток ключа хоста: SHA256 (как в OpenSSH) — `sha2` + `base64`.
 - Rust: `vault` (E2EE, KDF, cipher suite, версия форматов)
 - Rust: `sync-client` (oplog, pull/push, курсоры, конфликты)
 

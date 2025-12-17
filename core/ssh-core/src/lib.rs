@@ -1,8 +1,11 @@
 #![allow(clippy::unused_async)]
 
+use base64::engine::general_purpose::STANDARD_NO_PAD;
+use base64::Engine as _;
 use russh as _;
 use russh_keys as _;
 use secrecy::SecretString;
+use sha2::{Digest, Sha256};
 use tokio::sync::broadcast;
 
 pub type EventStream<T> = broadcast::Receiver<T>;
@@ -177,6 +180,7 @@ pub struct PrivateKeyRef {
 pub struct SshSession {
     state: SshState,
     events_tx: broadcast::Sender<SshEvent>,
+    pending_host_key: Option<HostKeyPromptEvent>,
 }
 
 impl SshSession {
@@ -206,6 +210,7 @@ impl SshSession {
         SshSession {
             state: SshState::Init,
             events_tx: broadcast::Sender::new(256),
+            pending_host_key: None,
         }
     }
 
@@ -234,26 +239,83 @@ impl SshSession {
         self.transition(SshState::Connecting)?;
         // Логика установки соединения
         // ...
-        self.transition(SshState::HostKeyPrompt)?;
+
+        self.pending_host_key = Some(HostKeyPromptEvent {
+            fingerprint: format!(
+                "SHA256:{}",
+                STANDARD_NO_PAD.encode(Sha256::digest(host.as_bytes()))
+            ),
+            reason: HostKeyReason::New,
+        });
         Ok(())
     }
 
     pub async fn verify_host_key(
         &mut self,
         policy: HostKeyPolicy,
+        known: Option<KnownHostEntry>,
     ) -> Result<HostKeyDecision, SshError> {
-        if self.state != SshState::HostKeyPrompt {
+        if self.state != SshState::Connecting && self.state != SshState::HostKeyPrompt {
             return Err(SshError::invalid_state());
         }
 
+        let server_fingerprint = match self.pending_host_key.as_ref() {
+            Some(p) => p.fingerprint.as_str(),
+            None => {
+                return Err(SshError::new(
+                    SshErrorCode::InternalError,
+                    "Missing pending host key",
+                    false,
+                ))
+            }
+        };
+
+        let reason = match known.as_ref() {
+            None => HostKeyReason::New,
+            Some(k) if k.fingerprint == server_fingerprint => {
+                self.transition(SshState::Ready)?;
+                return Ok(HostKeyDecision::Unchanged);
+            }
+            Some(_) => HostKeyReason::Changed,
+        };
+
         match policy {
-            HostKeyPolicy::Strict => Err(SshError::new(
-                SshErrorCode::HostkeyUnknown,
-                "Host key unknown (policy=strict)",
-                false,
-            )),
-            HostKeyPolicy::AcceptNew => Ok(HostKeyDecision::Accepted),
-            HostKeyPolicy::Ask => Ok(HostKeyDecision::Accepted), // Заглушка
+            HostKeyPolicy::Strict => match reason {
+                HostKeyReason::New => Err(SshError::new(
+                    SshErrorCode::HostkeyUnknown,
+                    "Host key unknown (policy=strict)",
+                    false,
+                )),
+                HostKeyReason::Changed => Err(SshError::new(
+                    SshErrorCode::HostkeyChanged,
+                    "Host key changed (policy=strict)",
+                    false,
+                )),
+            },
+            HostKeyPolicy::AcceptNew => match reason {
+                HostKeyReason::New => {
+                    self.transition(SshState::Ready)?;
+                    Ok(HostKeyDecision::Accepted)
+                }
+                HostKeyReason::Changed => Err(SshError::new(
+                    SshErrorCode::HostkeyChanged,
+                    "Host key changed (policy=accept-new)",
+                    false,
+                )),
+            },
+            HostKeyPolicy::Ask => {
+                self.pending_host_key = Some(HostKeyPromptEvent {
+                    fingerprint: server_fingerprint.to_string(),
+                    reason,
+                });
+                self.transition(SshState::HostKeyPrompt)?;
+                let pending = self.pending_host_key.as_ref().expect("just set");
+                let _ = self.events_tx.send(SshEvent::HostKeyPrompt {
+                    fingerprint: pending.fingerprint.clone(),
+                    reason: pending.reason,
+                });
+                Ok(HostKeyDecision::Unchanged)
+            }
         }
     }
 
@@ -280,11 +342,22 @@ impl SshSession {
     }
 
     pub async fn host_key_accept(&mut self) -> Result<(), SshError> {
-        Err(SshError::not_implemented("host_key_accept"))
+        if self.state != SshState::HostKeyPrompt {
+            return Err(SshError::invalid_state());
+        }
+        self.pending_host_key = None;
+        self.transition(SshState::Ready)?;
+        Ok(())
     }
 
     pub async fn host_key_reject(&mut self) -> Result<(), SshError> {
-        Err(SshError::not_implemented("host_key_reject"))
+        if self.state != SshState::HostKeyPrompt {
+            return Err(SshError::invalid_state());
+        }
+        self.pending_host_key = None;
+        self.transition(SshState::Closing)?;
+        self.transition(SshState::Closed)?;
+        Ok(())
     }
 
     pub async fn open_pty(&mut self, _pty: Pty) -> Result<(), SshError> {
@@ -362,7 +435,49 @@ mod tests {
         let mut session = SshSession::new();
 
         // Попытка верификации в неверном состоянии
-        let result = session.verify_host_key(HostKeyPolicy::Strict).await;
+        let result = session.verify_host_key(HostKeyPolicy::Strict, None).await;
         assert!(matches!(result, Err(e) if e.code == SshErrorCode::InvalidState));
+    }
+
+    #[tokio::test]
+    async fn test_verify_host_key_strict_unknown_fails() {
+        let mut session = SshSession::new();
+        session.connect("example", 22, "user").await.unwrap();
+
+        let result = session.verify_host_key(HostKeyPolicy::Strict, None).await;
+        assert!(matches!(result, Err(e) if e.code == SshErrorCode::HostkeyUnknown));
+    }
+
+    #[tokio::test]
+    async fn test_verify_host_key_accept_new_unknown_accepts() {
+        let mut session = SshSession::new();
+        session.connect("example", 22, "user").await.unwrap();
+
+        let result = session
+            .verify_host_key(HostKeyPolicy::AcceptNew, None)
+            .await;
+        assert!(matches!(result, Ok(HostKeyDecision::Accepted)));
+        assert!(session.is_ready());
+    }
+
+    #[tokio::test]
+    async fn test_verify_host_key_ask_emits_prompt_and_accepts() {
+        let mut session = SshSession::new();
+        let mut rx = session.subscribe_events();
+        session.connect("example", 22, "user").await.unwrap();
+
+        let result = session.verify_host_key(HostKeyPolicy::Ask, None).await;
+        assert!(matches!(result, Ok(HostKeyDecision::Unchanged)));
+
+        loop {
+            match rx.try_recv() {
+                Ok(SshEvent::HostKeyPrompt { .. }) => break,
+                Ok(_) => continue,
+                Err(_) => panic!("missing HostKeyPrompt event"),
+            }
+        }
+
+        session.host_key_accept().await.unwrap();
+        assert!(session.is_ready());
     }
 }
