@@ -193,6 +193,7 @@ impl SshSession {
             (from, to),
             (SshState::Init, SshState::Connecting)
                 | (SshState::Connecting, SshState::HostKeyPrompt)
+                | (SshState::Connecting, SshState::Ready)
                 | (SshState::HostKeyPrompt, SshState::Ready)
                 | (SshState::Ready, SshState::Closing)
                 | (SshState::Closing, SshState::Closed)
@@ -330,13 +331,16 @@ mod tests {
         let mut session = SshSession::new();
         assert_eq!(session.state, SshState::Init);
 
-        session.transition(SshState::Connecting).unwrap();
-        assert_eq!(session.state, SshState::Connecting);
-
         assert!(matches!(
             session.transition(SshState::Ready),
             Err(e) if e.code == SshErrorCode::InvalidState
         ));
+
+        session.transition(SshState::Connecting).unwrap();
+        assert_eq!(session.state, SshState::Connecting);
+
+        session.transition(SshState::Ready).unwrap();
+        assert_eq!(session.state, SshState::Ready);
     }
 
     #[tokio::test]
