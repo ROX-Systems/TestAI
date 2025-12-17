@@ -180,6 +180,27 @@ pub struct SshSession {
 }
 
 impl SshSession {
+    fn can_transition(from: SshState, to: SshState) -> bool {
+        if from == to {
+            return true;
+        }
+
+        if from == SshState::Closed {
+            return false;
+        }
+
+        matches!(
+            (from, to),
+            (SshState::Init, SshState::Connecting)
+                | (SshState::Connecting, SshState::HostKeyPrompt)
+                | (SshState::HostKeyPrompt, SshState::Ready)
+                | (SshState::Ready, SshState::Closing)
+                | (SshState::Closing, SshState::Closed)
+                | (_, SshState::Closing)
+                | (_, SshState::Closed)
+        )
+    }
+
     pub fn new() -> Self {
         SshSession {
             state: SshState::Init,
@@ -188,8 +209,18 @@ impl SshSession {
     }
 
     /// Обновление состояния сессии
-    pub fn transition(&mut self, new_state: SshState) {
+    pub fn transition(&mut self, new_state: SshState) -> Result<(), SshError> {
+        if !Self::can_transition(self.state, new_state) {
+            return Err(SshError::invalid_state());
+        }
+
+        if new_state == self.state {
+            return Ok(());
+        }
+
         self.state = new_state;
+        let _ = self.events_tx.send(SshEvent::Status { state: new_state });
+        Ok(())
     }
 
     /// Проверка, разрешены ли операции ввода
@@ -199,10 +230,10 @@ impl SshSession {
 
     pub async fn connect(&mut self, host: &str, port: u16, user: &str) -> Result<(), SshError> {
         let _ = (host, port, user); // Заглушка для неиспользуемых переменных
-        self.transition(SshState::Connecting);
+        self.transition(SshState::Connecting)?;
         // Логика установки соединения
         // ...
-        self.transition(SshState::HostKeyPrompt);
+        self.transition(SshState::HostKeyPrompt)?;
         Ok(())
     }
 
@@ -267,8 +298,8 @@ impl SshSession {
     }
 
     pub async fn disconnect(&mut self) -> Result<(), SshError> {
-        self.transition(SshState::Closing);
-        self.transition(SshState::Closed);
+        self.transition(SshState::Closing)?;
+        self.transition(SshState::Closed)?;
         Ok(())
     }
 
@@ -299,11 +330,27 @@ mod tests {
         let mut session = SshSession::new();
         assert_eq!(session.state, SshState::Init);
 
-        session.transition(SshState::Connecting);
+        session.transition(SshState::Connecting).unwrap();
         assert_eq!(session.state, SshState::Connecting);
 
-        session.transition(SshState::Ready);
-        assert_eq!(session.state, SshState::Ready);
+        assert!(matches!(
+            session.transition(SshState::Ready),
+            Err(e) if e.code == SshErrorCode::InvalidState
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_transition_emits_status_event() {
+        let mut session = SshSession::new();
+        let mut rx = session.subscribe_events();
+
+        session.transition(SshState::Connecting).unwrap();
+        assert!(matches!(
+            rx.try_recv(),
+            Ok(SshEvent::Status {
+                state: SshState::Connecting
+            })
+        ));
     }
 
     #[tokio::test]
