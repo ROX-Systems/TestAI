@@ -156,11 +156,7 @@ impl SshError {
     }
 
     fn invalid_state() -> Self {
-        Self::new(
-            SshErrorCode::InvalidState,
-            "Invalid state",
-            false,
-        )
+        Self::new(SshErrorCode::InvalidState, "Invalid state", false)
     }
 }
 
@@ -210,7 +206,10 @@ impl SshSession {
         Ok(())
     }
 
-    pub async fn verify_host_key(&mut self, policy: HostKeyPolicy) -> Result<HostKeyDecision, SshError> {
+    pub async fn verify_host_key(
+        &mut self,
+        policy: HostKeyPolicy,
+    ) -> Result<HostKeyDecision, SshError> {
         if self.state != SshState::HostKeyPrompt {
             return Err(SshError::invalid_state());
         }
@@ -222,7 +221,7 @@ impl SshSession {
                 false,
             )),
             HostKeyPolicy::AcceptNew => Ok(HostKeyDecision::Accepted),
-            HostKeyPolicy::Ask => Ok(HostKeyDecision::Accepted),  // Заглушка
+            HostKeyPolicy::Ask => Ok(HostKeyDecision::Accepted), // Заглушка
         }
     }
 
@@ -278,6 +277,12 @@ impl SshSession {
     }
 }
 
+impl Default for SshSession {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Событие запроса проверки host key
 #[derive(Debug)]
 pub struct HostKeyPromptEvent {
@@ -304,7 +309,7 @@ mod tests {
     #[tokio::test]
     async fn test_verify_host_key_errors() {
         let mut session = SshSession::new();
-        
+
         // Попытка верификации в неверном состоянии
         let result = session.verify_host_key(HostKeyPolicy::Strict).await;
         assert!(matches!(result, Err(e) if e.code == SshErrorCode::InvalidState));
