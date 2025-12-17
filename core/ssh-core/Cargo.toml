@@ -1,0 +1,10 @@
+[package]
+name = "ssh-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+secrecy = "0.8"
+russh = "0.49"
+russh-keys = "0.49"
