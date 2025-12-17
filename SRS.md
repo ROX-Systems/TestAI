@@ -1,9 +1,11 @@
 # SSH Client + WebSSH Gateway — SRS
+
 Version: v0.4  
 Date: 2025-12-16  
 Status: Production-ready draft
 
 ## Table of Contents
+
 - [1. Introduction](#1-introduction)
 - [2. Glossary](#2-glossary)
 - [3. Assumptions and constraints](#3-assumptions-and-constraints)
@@ -24,7 +26,9 @@ Status: Production-ready draft
 ## 1. Introduction
 
 ### 1.1 Purpose
+
 This document defines **software requirements** for:
+
 - Cross-platform SSH client apps (Desktop/Mobile/Web)
 - Shared Core SDK (Rust)
 - Sync backend (sync-api)
@@ -33,7 +37,9 @@ This document defines **software requirements** for:
 Product-level scope and priorities are defined in **PRD.md**.
 
 ### 1.2 Scope
+
 MVP must deliver:
+
 - Interactive SSH terminal on all platforms
 - E2EE sync for catalog data (hosts/snippets/ui_settings)
 - Web access via gateway with strict security invariants
@@ -61,11 +67,13 @@ MVP must deliver:
 ## 3. Assumptions and constraints
 
 ### 3.1 Assumptions
+
 - Client devices and browsers can be compromised; system reduces risk but cannot fully eliminate it.
 - Server components are **zero-trust for plaintext**: sync-api never decrypts vault data.
 - Web clients are subject to XSS risk; CSP and token handling must reduce impact.
 
 ### 3.2 Constraints
+
 - Web client cannot open raw TCP to SSH servers; **must** use gateway.
 - Mobile background session persistence is limited by OS.
 - Cryptographic parameters must be versioned to allow migrations and future suite upgrades.
@@ -75,7 +83,8 @@ MVP must deliver:
 ## 4. System context and architecture
 
 ### 4.1 High-level diagram
-```
+
+```plaintext
 Desktop App ─┐
 Mobile App  ─┼── HTTPS ──► Sync API ──► Postgres (ciphertext + metadata)
 Web App     ─┘
@@ -85,6 +94,7 @@ Desktop/Mobile may also connect directly to SSH Server over TCP.
 ```
 
 ### 4.2 Modules
+
 - `core/ssh-core`: SSH connection, auth, PTY, SFTP (v1), forwarding (v1), host key verification
 - `core/vault`: E2EE vault encryption/decryption, format versioning, migrations
 - `core/sync-client`: oplog, push/pull, conflict handling
@@ -96,7 +106,9 @@ Desktop/Mobile may also connect directly to SSH Server over TCP.
 ## 5. Data model and storage
 
 ### 5.1 Entities (logical)
+
 #### 5.1.1 Host
+
 ```yaml
 Host:
   id: UUID
@@ -124,6 +136,7 @@ Host:
 ```
 
 #### 5.1.2 Key (metadata only in vault; private material in secure storage)
+
 ```yaml
 Key:
   id: UUID
@@ -136,6 +149,7 @@ Key:
 ```
 
 #### 5.1.3 KnownHost
+
 ```yaml
 KnownHost:
   id: UUID
@@ -149,6 +163,7 @@ KnownHost:
 ```
 
 ### 5.2 Storage responsibilities
+
 - Desktop/Mobile: local DB (SQLite) holds encrypted vault blobs and indexes.
 - Web: IndexedDB holds encrypted vault blobs; master key never persists in plaintext.
 - Private keys: **secure storage only** (Desktop/Mobile). Web MVP: no persistent storage for keys.
@@ -158,6 +173,7 @@ KnownHost:
 ## 6. Security requirements
 
 ### 6.1 Security invariants (MUST)
+
 | SEC ID | Invariant |
 |---|---|
 | SEC-001 | Sync server must never access plaintext vault contents |
@@ -170,6 +186,7 @@ KnownHost:
 | SEC-008 | JWT validation includes exp; device binding is enforced (userId, deviceId) |
 
 ### 6.2 Host key verification requirements
+
 - Fingerprint algorithm: **SHA256** fingerprints (OpenSSH style).
 - Policies:
   - `strict`: if unknown or changed → fail with `HOSTKEY_CHANGED` or `HOSTKEY_UNKNOWN`
@@ -178,12 +195,14 @@ KnownHost:
 - Known hosts are stored in vault (`KnownHost` collection), with optional `pinned=true` (treat as strict for that hostPattern).
 
 ### 6.3 Key handling requirements
+
 - Decrypted private key bytes must:
   - be held in memory for minimal time (best effort),
   - be wiped after use where feasible (secure zeroization libraries),
   - never be copied to logs, crash reports, telemetry, or persistence.
 
 ### 6.4 Web security controls (baseline)
+
 - Strict CSP (no inline scripts; allow-list origins).
 - Avoid storing JWT in JS-readable storage if possible.
 - Sanitize any user-supplied strings rendered in DOM (tags, titles, hostnames).
@@ -193,9 +212,11 @@ KnownHost:
 ## 7. Core SDK interfaces
 
 ### 7.1 `ssh-core` API (Rust)
+
 Normative interface (language bindings must preserve semantics).
 
 #### 7.1.1 Types
+
 ```rust
 pub enum HostKeyPolicy { Strict, AcceptNew, Ask }
 pub struct Pty { pub cols: u16, pub rows: u16, pub term: String }
@@ -213,6 +234,7 @@ pub enum SshState { Init, Connecting, HostKeyPrompt, Ready, Closing, Closed }
 ```
 
 #### 7.1.2 Session API
+
 ```rust
 pub struct SshSession;
 
@@ -236,13 +258,16 @@ impl SshSession {
 ```
 
 #### 7.1.3 Behavioral requirements
+
 - `write_stdin` and `resize` MUST fail with `NOT_READY` unless state is `Ready`.
 - `verify_host_key` MUST yield deterministic results given same known_hosts and server key.
 - `HostKeyPrompt` event MUST contain fingerprint and reason (NEW/CHANGED).
 - Errors MUST be stable and machine-readable (see [12](#12-error-model)).
 
 ### 7.2 `vault` API (Rust)
+
 #### 7.2.1 Vault header
+
 ```yaml
 VaultHeader:
   vaultVersion: int
@@ -252,6 +277,7 @@ VaultHeader:
 ```
 
 #### 7.2.2 Normative operations
+
 ```rust
 pub struct Vault;
 
@@ -268,13 +294,17 @@ impl Vault {
 ```
 
 #### 7.2.3 Cryptography requirements
+
 - KDF: Argon2id; parameters MUST be versioned and included in header.
 - AEAD: AES-256-GCM or ChaCha20-Poly1305; suite selection MUST be versioned.
 - Payload serialization: CBOR preferred (JSON allowed only if explicitly versioned).
 
 ### 7.3 `sync-client` API
+
 #### 7.3.1 Oplog
+
 - Client records operations as:
+
 ```yaml
 SyncOp:
   entityType: hosts|snippets|ui_settings|known_hosts
@@ -287,8 +317,8 @@ SyncOp:
 ```
 
 #### 7.3.2 Push/Pull algorithm (normative)
-Pseudo-code:
-```
+
+```Pseudo-code:
 push():
   batch = oplog.pending(limit)
   resp = POST /sync/push { batch }
@@ -301,6 +331,7 @@ pull():
 ```
 
 #### 7.3.3 Conflict rules (MVP)
+
 - Prefer safe **field-level auto-merge** when changes do not overlap.
 - Otherwise use **LWW** based on server ordering (`serverSeq`), not device clocks.
 - v1 adds manual resolution UI and `/sync/resolve`.
@@ -310,69 +341,93 @@ pull():
 ## 8. Sync API
 
 ### 8.1 Authentication
+
 - Access token: JWT with `userId`, `deviceId`, `exp` and SHOULD include `jti`.
 - Refresh token: separate, long-lived, stored in secure storage.
 
 ### 8.2 Endpoints (MVP)
+
 **Note**: This is a normative contract; OpenAPI should be generated to match.
 
 #### 8.2.1 `POST /auth/register`
+
 Request:
+
 ```json
 { "email":"...", "password":"...", "deviceName":"..." }
 ```
+
 Response:
+
 ```json
 { "accessToken":"...", "refreshToken":"...", "deviceId":"..." }
 ```
 
 #### 8.2.2 `POST /auth/login`
+
 Same shape as register.
 
 #### 8.2.3 `POST /auth/refresh`
+
 Request:
+
 ```json
 { "refreshToken":"...", "deviceId":"..." }
 ```
+
 Response:
+
 ```json
 { "accessToken":"..." }
 ```
 
 #### 8.2.4 `GET /sync/state`
+
 Response:
+
 ```json
 { "userId":"...", "deviceId":"...", "lastServerSeq": 12345 }
 ```
 
 #### 8.2.5 `POST /sync/push`
+
 Request:
+
 ```json
 { "ops": [ /* SyncOp */ ] }
 ```
+
 Response:
+
 ```json
 { "ackSeq": 12345, "rejected": [] }
 ```
 
 #### 8.2.6 `POST /sync/pull`
+
 Request:
+
 ```json
 { "afterSeq": 12345, "limit": 500 }
 ```
+
 Response:
+
 ```json
 { "ops": [ /* server ops */ ], "lastSeq": 12500 }
 ```
 
 ### 8.3 Storage schema (minimum)
+
 - `users`
 - `devices (userId, deviceId, deviceName, createdAt, revokedAt?)`
 - `sync_ops (userId, entityType, entityId, revision, tombstone, encryptedBlob, deviceId, serverSeq, serverTime)`
 - `device_state (userId, deviceId, lastAckSeq)`
 
 ### 8.4 Rate limiting requirements
+
 - Return HTTP 429 with structured retry info:
+
 ```json
 { "code":"RATE_LIMITED", "retryAfterMs": 1000 }
 ```
@@ -382,23 +437,30 @@ Response:
 ## 9. WebSSH Gateway protocol (WSS)
 
 ### 9.1 Transport
+
 - Transport: WebSocket Secure (WSS)
 - Encoding: JSON (MVP). Binary data in base64 fields named `dataBase64`.
 
 ### 9.2 Common envelope
+
 All messages MUST include:
+
 - `type: string`
 - `requestId: string` (UUID) — correlation + idempotency
 - `protocolVersion: string` (e.g. "0.4")
 - `payload: object`
 
 ### 9.3 Idempotency rules
+
 Gateway MUST cache results per `requestId` within the WSS session lifetime:
+
 - Repeat with same `requestId` → return identical response without re-execution.
 - For `stdin`: at-least-once safe; repeats must not duplicate input (track `lastAppliedStdinRequestId` per `sessionId`).
 
 ### 9.4 Session state machine (per `sessionId`)
+
 States:
+
 - `INIT`, `CONNECTING`, `HOSTKEY_PROMPT`, `READY`, `CLOSING`, `CLOSED`
 
 Transitions:
@@ -409,6 +471,7 @@ Transitions:
 `READY` → disconnect/timeout/error/exit → `CLOSING` → `CLOSED`
 
 Validation:
+
 - `connect` forbidden before successful auth (if auth uses a message).
 - `stdin` and `resize` allowed only in `READY`.
 - Unknown `sessionId` → `error` with `BAD_REQUEST`.
@@ -417,7 +480,9 @@ Validation:
   - different params → `error` `SESSION_CONFLICT`
 
 ### 9.5 Authentication
+
 Client provides JWT access token:
+
 - Prefer header: `Authorization: Bearer <token>`, or
 - First message: `auth`
 
@@ -425,6 +490,7 @@ Token MUST include `userId`, `deviceId`, `exp` (SHOULD include `jti`).
 Gateway binds WSS session to `(userId, deviceId)` after validation.
 
 ### 9.6 Heartbeat
+
 - client → gateway: `ping`
 - gateway → client: `pong`
 - If no activity for `idleTimeoutSec` → close WSS.
@@ -432,28 +498,39 @@ Gateway binds WSS session to `(userId, deviceId)` after validation.
 ### 9.7 Message definitions (normative)
 
 #### 9.7.1 `auth` (optional)
+
 Client → gateway:
+
 ```json
 { "type":"auth", "requestId":"...", "protocolVersion":"0.4", "payload": { "token":"..." } }
 ```
+
 Gateway → client:
+
 ```json
 { "type":"auth_ok", "requestId":"...", "protocolVersion":"0.4", "payload": { "userId":"...", "deviceId":"..." } }
 ```
+
 Or error (see `error`).
 
 #### 9.7.2 `ping` / `pong`
+
 Client → gateway:
+
 ```json
 { "type":"ping", "requestId":"...", "protocolVersion":"0.4", "payload": {} }
 ```
+
 Gateway → client:
+
 ```json
 { "type":"pong", "requestId":"...", "protocolVersion":"0.4", "payload": { "serverTime":"2025-12-16T03:00:00Z" } }
 ```
 
 #### 9.7.3 `connect`
+
 Client → gateway:
+
 ```json
 {
   "type":"connect",
@@ -480,49 +557,65 @@ Client → gateway:
 ```
 
 Gateway lifecycle responses:
+
 ```json
 { "type":"status", "requestId":"...", "protocolVersion":"0.4", "payload": { "sessionId":"...", "state":"CONNECTING" } }
 ```
+
 ```json
 { "type":"status", "requestId":"...", "protocolVersion":"0.4", "payload": { "sessionId":"...", "state":"READY" } }
 ```
 
 #### 9.7.4 `stdout` / `stderr`
+
 Gateway → client:
+
 ```json
 { "type":"stdout", "requestId":"...", "protocolVersion":"0.4", "payload": { "sessionId":"...", "dataBase64":"..." } }
 ```
+
 ```json
 { "type":"stderr", "requestId":"...", "protocolVersion":"0.4", "payload": { "sessionId":"...", "dataBase64":"..." } }
 ```
 
 #### 9.7.5 `stdin`
+
 Client → gateway:
+
 ```json
 { "type":"stdin", "requestId":"...", "protocolVersion":"0.4", "payload": { "sessionId":"...", "dataBase64":"..." } }
 ```
+
 If sent before `READY` → `error` with code `NOT_READY`.
 
 #### 9.7.6 `resize`
+
 Client → gateway:
+
 ```json
 { "type":"resize", "requestId":"...", "protocolVersion":"0.4", "payload": { "sessionId":"...", "cols":120, "rows":30 } }
 ```
 
 #### 9.7.7 `disconnect`
+
 Client → gateway:
+
 ```json
 { "type":"disconnect", "requestId":"...", "protocolVersion":"0.4", "payload": { "sessionId":"..." } }
 ```
 
 #### 9.7.8 `exit`
+
 Gateway → client:
+
 ```json
 { "type":"exit", "requestId":"...", "protocolVersion":"0.4", "payload": { "sessionId":"...", "exitCode":0, "signal":null } }
 ```
 
 #### 9.7.9 `error`
+
 Gateway → client:
+
 ```json
 {
   "type":"error",
@@ -537,11 +630,14 @@ Gateway → client:
   }
 }
 ```
+
 - `retryAfterMs` MUST be set for `RATE_LIMITED` and MAY be set for `TIMEOUT`.
 - `retryable` guides UX (e.g., show “Reconnect”).
 
 #### 9.7.10 `flow_control` (MVP+)
+
 Gateway → client:
+
 ```json
 {
   "type":"flow_control",
@@ -553,25 +649,34 @@ Gateway → client:
   }
 }
 ```
+
 If `windowBytes=0`, client MUST pause stdin sending.
 
 ### 9.8 Host key prompt flow
+
 If policy requires user decision:
 Gateway → client:
+
 ```json
 { "type":"hostkey_prompt", "requestId":"...", "protocolVersion":"0.4", "payload": { "sessionId":"...", "fingerprint":"...", "reason":"NEW|CHANGED" } }
 ```
+
 Client → gateway:
+
 ```json
 { "type":"hostkey_accept", "requestId":"...", "protocolVersion":"0.4", "payload": { "sessionId":"..." } }
 ```
+
 Client → gateway:
+
 ```json
 { "type":"hostkey_reject", "requestId":"...", "protocolVersion":"0.4", "payload": { "sessionId":"..." } }
 ```
 
 ### 9.9 Quotas and limits
+
 Configurable minimum limits:
+
 - `maxConcurrentSessionsPerUser`
 - `maxSessionDurationSec`
 - `maxBytesPerSession`
@@ -581,6 +686,7 @@ Configurable minimum limits:
 Exceeding MUST return `error` with `QUOTA_EXCEEDED` or `RATE_LIMITED`.
 
 ### 9.10 Gateway secret handling (temp_key)
+
 - `tempKey` material MUST exist only in gateway RAM.
 - Must be wiped on `disconnect`, `exit`, timeout, error, or heartbeat timeout.
 - Must not be logged; must not be serialized in panic dumps (best effort).
@@ -590,16 +696,19 @@ Exceeding MUST return `error` with `QUOTA_EXCEEDED` or `RATE_LIMITED`.
 ## 10. Platform-specific constraints
 
 ### 10.1 Web
+
 - No persistent private key storage in MVP.
 - No agent forwarding (MVP).
 - No background reconnect guarantee.
 - All SSH sessions only via gateway.
 
 ### 10.2 Mobile
+
 - Background execution constraints; sessions may be suspended.
 - Secure storage must use platform keychain/keystore.
 
 ### 10.3 Desktop
+
 - Must integrate with OS secure storage APIs.
 - Should support xterm.js terminal behavior consistently.
 
@@ -608,6 +717,7 @@ Exceeding MUST return `error` with `QUOTA_EXCEEDED` or `RATE_LIMITED`.
 ## 11. Logging, telemetry, and audit
 
 ### 11.1 Logging levels and redaction
+
 - All logs must be structured.
 - Must not log:
   - passwords, private key material, decrypted vault blobs, terminal I/O.
@@ -615,6 +725,7 @@ Exceeding MUST return `error` with `QUOTA_EXCEEDED` or `RATE_LIMITED`.
   - userId/deviceId (hashed if required), host alias (not raw hostname if sensitive), durations, error codes.
 
 ### 11.2 Audit events (minimum)
+
 | Event | Fields |
 |---|---|
 | user_login | userId, deviceId, time |
@@ -629,7 +740,9 @@ Exceeding MUST return `error` with `QUOTA_EXCEEDED` or `RATE_LIMITED`.
 ## 12. Error model
 
 ### 12.1 Canonical error codes
+
 #### 12.1.1 Gateway error codes (minimum)
+
 - AUTH_FAILED
 - UNSUPPORTED_PROTOCOL
 - BAD_REQUEST
@@ -639,12 +752,14 @@ Exceeding MUST return `error` with `QUOTA_EXCEEDED` or `RATE_LIMITED`.
 - DNS_FAILED
 - TIMEOUT
 - HOSTKEY_CHANGED
+- HOSTKEY_UNKNOWN
 - HOSTKEY_REJECTED
 - QUOTA_EXCEEDED
 - RATE_LIMITED
 - INTERNAL_ERROR
 
 #### 12.1.2 Sync API error codes (minimum)
+
 - AUTH_FAILED
 - DEVICE_REVOKED
 - RATE_LIMITED
@@ -652,6 +767,7 @@ Exceeding MUST return `error` with `QUOTA_EXCEEDED` or `RATE_LIMITED`.
 - INTERNAL_ERROR
 
 ### 12.2 HTTP status mapping (sync-api)
+
 - 400 → BAD_REQUEST
 - 401 → AUTH_FAILED
 - 403 → DEVICE_REVOKED (or AUTH_FAILED depending on threat model)
@@ -663,11 +779,13 @@ Exceeding MUST return `error` with `QUOTA_EXCEEDED` or `RATE_LIMITED`.
 ## 13. Versioning and migrations
 
 ### 13.1 Vault versioning
+
 - `vaultVersion` increments on format changes.
 - `kdfParamsVersion` increments on KDF parameter changes.
 - `cipherSuiteVersion` increments on cipher suite changes.
 
 ### 13.2 Protocol versioning
+
 - Gateway protocol uses `protocolVersion` string.
 - Client MUST fail closed on unsupported versions with a clear UX error.
 
@@ -676,6 +794,7 @@ Exceeding MUST return `error` with `QUOTA_EXCEEDED` or `RATE_LIMITED`.
 ## 14. Testability and compliance
 
 ### 14.1 Required test suites (MVP)
+
 - Integration tests with dockerized OpenSSH server for:
   - interactive PTY + resize,
   - host key accept-new and strict changed-key block.
@@ -690,4 +809,5 @@ Exceeding MUST return `error` with `QUOTA_EXCEEDED` or `RATE_LIMITED`.
   - `cargo audit`, `npm audit` gating (policy in Implementation Plan).
 
 ### 14.2 Release “no-go” conditions
+
 See `IMPLEMENTATION_PLAN.md` for operational checklist and gates.

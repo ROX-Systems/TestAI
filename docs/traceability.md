@@ -1,12 +1,14 @@
 # Traceability — SSH Client + WebSSH Gateway
+
 Версия: 0.1  
 Дата: 2025-12-17  
 Статус: Active
 
 ## 0. Назначение
-Этот документ связывает требования (FR/NFR/SEC/Threat/AC) с модулями и этапами реализации (M0–M7).
 
+Этот документ связывает требования (FR/NFR/SEC/Threat/AC) с модулями и этапами реализации (M0–M7).
 Источники:
+
 - `project-specs.md`
 - `PRD.md`
 - `SRS.md`
@@ -14,6 +16,7 @@
 - `IMPLEMENTATION_PLAN.md`
 
 ## 1. FR → Milestones / Modules (MVP)
+
 | Требование / группа | Milestone(ы) | Основные модули |
 |---|---|---|
 | Host catalog (FR-001..FR-004) | M2, M3.5, M4/M6 | `core/vault`, `core/sync-client`, `apps/*` |
@@ -26,6 +29,7 @@
 | WebSSH Gateway (FR-160..FR-165) | M5 | `server/webssh-gateway`, `apps/web` |
 
 ## 2. NFR/SEC → проверки (gates/tests)
+
 | ID | Требование | Где реализуется | Как проверяется (минимум) |
 |---|---|---|---|
 | NFR-001 / SEC-006 | Секреты не попадают в логи/телеметрию/краши | все модули | secret-scan gate + redaction/unit tests + аудит логирования |
@@ -39,6 +43,7 @@
 | SEC-008 | JWT exp + device binding | `server/sync-api`, `server/webssh-gateway` | тесты валидации токена и привязки userId/deviceId |
 
 ## 3. Threat → Controls (приоритетные)
+
 | Threat ID | Риск | Контрмеры | Проверка |
 |---|---|---|---|
 | T-003 | утечки секретов | SEC-006, NFR-001 | secret-scan gate, тестовые ключи/энтропия |
@@ -46,6 +51,7 @@
 | T-002 | MITM/host key substitution | SEC-005, FR-060/061/062 | host key tests + UX prompt/strict behavior |
 
 ## 4. AC → Milestones (MVP)
+
 | AC | Milestone(ы) |
 |---|---|
 | AC-001 | M1 + M4 |

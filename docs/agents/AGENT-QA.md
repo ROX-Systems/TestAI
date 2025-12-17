@@ -1,14 +1,18 @@
 # AGENT-QA — QA / Тест-инженер
+
 Версия: 0.1  
 Дата: 2025-12-17  
-Статус: Active (Stage 0)
+Статус: Active
 
 ## 0. Мандат
+
 - Определить тест-стратегию по модулям и минимальный набор обязательных suite’ов для MVP.
 - Гарантировать проверяемость требований (особенно security invariants).
 
 ## 1. TODO History (append-only)
+
 ### Snapshot 2025-12-17
+
 | ID | Статус | Приоритет | Задача | Трассировка |
 |---|---|---|---|---|
 | M0-QA-001 | TODO | HIGH | Сформировать список обязательных интеграционных тестов MVP (ssh-core, gateway, sync) | SRS.md §14; IMPLEMENTATION_PLAN.md §3 |
@@ -16,6 +20,7 @@
 | M0-QA-003 | TODO | MEDIUM | Зафиксировать критерии DoD/no-go по этапам в виде чек-листов | IMPLEMENTATION_PLAN.md §3/§5 |
 
 ### Snapshot 2025-12-17 (updates)
+
 | ID | Статус | Приоритет | Задача | Трассировка |
 |---|---|---|---|---|
 | M0-QA-001 | IN_PROGRESS | HIGH | Сформировать список обязательных интеграционных тестов MVP (ssh-core, gateway, sync) | `docs/traceability.md`; SRS.md §14 |

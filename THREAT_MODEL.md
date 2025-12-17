@@ -1,9 +1,11 @@
 # SSH Client + WebSSH Gateway — Threat Model (STRIDE/DREAD)
+
 Version: v0.4  
 Date: 2025-12-16  
 Status: Production-ready draft
 
 ## Table of Contents
+
 - [1. Scope](#1-scope)
 - [2. Assets and trust boundaries](#2-assets-and-trust-boundaries)
 - [3. Attackers and entry points](#3-attackers-and-entry-points)
@@ -16,12 +18,15 @@ Status: Production-ready draft
 ---
 
 ## 1. Scope
+
 Components:
+
 - Apps: Desktop / Mobile / Web
 - Core: `ssh-core`, `vault`, `sync-client`
 - Server: `sync-api`, `webssh-gateway`
 
 Out of scope:
+
 - Compromise of SSH server itself
 - Full OS compromise mitigation (only risk reduction)
 
@@ -30,6 +35,7 @@ Out of scope:
 ## 2. Assets and trust boundaries
 
 ### 2.1 Critical assets
+
 | Asset | Description |
 |---|---|
 | A1 | Private keys / passphrases / passwords |
@@ -40,6 +46,7 @@ Out of scope:
 | A6 | Device identity (deviceId), server cursor state |
 
 ### 2.2 Trust boundaries
+
 - TB1: App ↔ Sync API over HTTPS
 - TB2: Web App ↔ WebSSH Gateway over WSS
 - TB3: Gateway ↔ SSH Server over TCP
@@ -49,7 +56,9 @@ Out of scope:
 ---
 
 ## 3. Attackers and entry points
+
 ### 3.1 Attacker profiles
+
 - ATK-1: Network attacker (MITM, replay)
 - ATK-2: Web attacker (XSS, supply chain in JS deps)
 - ATK-3: Server attacker (DB exfiltration, sync-api compromise)
@@ -57,6 +66,7 @@ Out of scope:
 - ATK-5: Abusive client (quota bypass, protocol fuzzing)
 
 ### 3.2 Entry points
+
 - EP1: Sync API endpoints
 - EP2: Gateway WSS protocol messages
 - EP3: Web UI inputs rendered in DOM
@@ -68,6 +78,7 @@ Out of scope:
 ## 4. STRIDE analysis
 
 ### 4.1 Threat catalog (normative IDs)
+
 Legend: STRIDE category — **S**poofing, **T**ampering, **R**epudiation, **I**nformation disclosure, **D**oS, **E**levation.
 
 | Threat ID | STRIDE | Description | Primary assets | Primary mitigations (refs) |
@@ -86,6 +97,7 @@ Legend: STRIDE category — **S**poofing, **T**ampering, **R**epudiation, **I**n
 ---
 
 ## 5. DREAD scoring
+
 Scale: 0–10 per dimension; Risk = average.
 
 | Threat ID | Damage | Repro | Exploit | Affected | Discover | Risk |
@@ -104,6 +116,7 @@ Highest priority risks: **T-003, T-005, T-002**.
 ## 6. Security requirements mapping
 
 ### 6.1 Threat → Control mapping
+
 | Threat | Controls |
 |---|---|
 | T-002 | SEC-005; FR-060/061/062; gateway hostkey_prompt flow |
@@ -115,6 +128,7 @@ Highest priority risks: **T-003, T-005, T-002**.
 | T-010 | CI audits; pinned deps; optional SBOM |
 
 ### 6.2 Security test requirements (minimum)
+
 - Host key changed behavior blocks/prompted as per policy.
 - Gateway refuses stdin before READY.
 - Secret scanning of logs/telemetry/crash artifacts in CI.
@@ -126,16 +140,19 @@ Highest priority risks: **T-003, T-005, T-002**.
 ## 7. Architectural rationale
 
 ### 7.1 Why E2EE sync
+
 - Primary risk: server compromise (T-004).
 - Design choice: server stores encrypted blobs; decryption only on client.
 - Tradeoff: server cannot do plaintext search; clients maintain indexes.
 
 ### 7.2 Why Web requires gateway
+
 - Browsers cannot open raw TCP to SSH.
 - Gateway provides controlled bridge with strong limits and state validation.
 - Tradeoff: gateway becomes a high-value component; must be hardened and quota-protected.
 
 ### 7.3 Why “no persistent keys in web MVP”
+
 - Web threat model includes XSS and weaker local isolation.
 - Temporary key upload into gateway RAM limits exposure window (SEC-003).
 - Tradeoff: some UX friction; mitigated by clear warnings and optional password auth.
@@ -143,6 +160,7 @@ Highest priority risks: **T-003, T-005, T-002**.
 ---
 
 ## 8. Residual risk and follow-ups
+
 - Local malware (ATK-4) remains partially unmitigated; consider:
   - device revocation and “wipe device” in v1,
   - optional screenshot prevention on mobile,

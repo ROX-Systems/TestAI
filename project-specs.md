@@ -1,12 +1,15 @@
 # SSH Client — Project Specs (PRD+SRS)
+
 Версия: 0.3  
 Дата: 2025-12-16  
 Статус: Draft for Implementation
 
 ## 0. Краткое описание
+
 Кросс-платформенный SSH-клиент: Desktop (Windows/macOS/Linux), Mobile (iOS/Android), Web (браузер).
 
 Функции:
+
 - каталог хостов, ключи/секреты
 - терминальные SSH-сессии
 - SFTP (v1)
@@ -18,17 +21,21 @@ Web-версия работает только через WebSSH Gateway:
 браузер ↔ WSS ↔ gateway ↔ SSH-сервер
 
 ## 1. Цели и принципы
+
 ### 1.1 Цели продукта
+
 - Единый каталог хостов и настроек на всех устройствах.
 - Быстрое подключение и удобный UX: поиск/теги/избранное/шаблоны.
 - Безопасность по умолчанию: проверка host key, защита секретов, E2EE-синхронизация.
 
 ### 1.2 Не цели (для MVP/v1)
+
 - Организационные workspaces, RBAC (возможны v2).
 - “24/7 фоновые” подключения на mobile (ограничения iOS/Android).
 - Полная поддержка всех директив OpenSSH (MVP: минимальный набор, v1: расширение).
 
 ## 2. Security Invariants (MUST)
+
 - Sync-сервер **никогда** не имеет доступа к plaintext данным vault (только encrypted blobs).
 - Приватные ключи **не синхронизируются по умолчанию**.
 - Web MVP: приватный ключ существует **только** как временная загрузка (RAM gateway) и не хранится персистентно в браузере.
@@ -37,59 +44,69 @@ Web-версия работает только через WebSSH Gateway:
 - Секреты не должны попадать в логи/трейсы/телеметрию/краш-репорты (best effort + тесты).
 
 ## 3. Платформы и стек
+
 ### 3.1 Core SDK (общий)
+
 - Rust: `ssh-core` (SSH PTY, SFTP, forwarding, host key verify, ssh_config parsing)
+- SSH библиотека: `russh` (см. `docs/decision-log.md` D-001)
 - Rust: `vault` (E2EE, KDF, cipher suite, версия форматов)
 - Rust: `sync-client` (oplog, pull/push, курсоры, конфликты)
 
 ### 3.2 Desktop
+
 - Tauri 2 + React (TypeScript)
 - Terminal UI: xterm.js
 - Secure storage: OS Keychain (Windows DPAPI / macOS Keychain / Linux Secret Service)
 
 ### 3.3 Mobile
+
 - Flutter + FFI bindings к Rust Core
 - Secure storage: iOS Keychain / Android Keystore
 - Terminal: Flutter terminal widget (MVP: корректная интерактивность для ANSI/VT100; v1: улучшение совместимости)
 
 ### 3.4 Web
+
 - Next.js (React/TS) + xterm.js
 - WebSSH Gateway: Rust (WSS ↔ SSH bridge), протокол: `gateway-protocol.md`
 - Web vault: E2EE blobs в IndexedDB (ключ — master password; Passkeys как улучшение в v1+)
 
 ### 3.5 Backend Sync
+
 - Rust (Axum) API + PostgreSQL
 - На сервере: только encrypted blobs + метаданные версий/устройств/курсоров
 - Rate limit: встроенно/через reverse proxy; Redis опционально
 
 ### 3.6 Структура репозитория (монорепо)
+
 - `core/` — Rust Core SDK (ssh-core/vault/sync-client).
 - `apps/` — приложения (desktop/web/mobile).
 - `server/` — серверные компоненты (sync-api/webssh-gateway).
 - `packages/` — общие пакеты (в т.ч. TS/shared UI/types при необходимости).
 - `docs/` — управленческая и проектная документация.
 
-## 4. Релизные границы (очень важно)
-### 4.1 MVP (обязательный минимум)
-**Desktop MVP**
-- Каталог хостов: CRUD, поиск, теги, избранное.
-- SSH терминал: интерактивный PTY, вкладки (сплиты не обязательны в MVP).
-- Аутентификация: password + key (Ed25519; RSA опционально).
-- Host key verification: `ask` + `accept-new` по умолчанию; `strict` как опция.
-- Vault (локально): хранение hosts/snippets/ui_settings/known_hosts (локально).
-- E2EE Sync: hosts + snippets + ui_settings (без синка приватных ключей по умолчанию).
+### 3.7 Git / окончания строк (Windows)
 
-**Web MVP**
+- Окончания строк фиксируем через `.gitattributes` (в т.ч. `*.md`, `*.rs`, `*.toml`, `*.yml|*.yaml`, `Cargo.lock`) — в git всегда `LF`.
+- Для читабельного `git diff` в Windows-консоли (без кракозябр Unicode) перед просмотром диффа переключать вывод в UTF-8 (`chcp 65001`; при необходимости также задать UTF-8 output encoding в PowerShell).
+
+## 4. Релизные границы (очень важно)
+
+### 4.1 MVP (обязательный минимум)
+
+## Web MVP
+
 - Каталог хостов (из синка) + терминал через gateway.
 - В Web по умолчанию НЕ хранить приватные ключи персистентно.
 - Аутентификация в сессию: password или “temporary key upload” (ключ только в RAM gateway до конца сессии).
 - Без SFTP, без forwarding в MVP.
 
-**Mobile MVP**
+## Mobile MVP
+
 - Каталог хостов + терминал + синк (hosts/snippets/ui_settings).
 - Без SFTP/forwarding в MVP.
 
 ### 4.2 v1 (после MVP)
+
 - SFTP manager (desktop полноценно, mobile/web упрощенно).
 - Forwarding: local + dynamic SOCKS (desktop), ограниченно web, mobile по возможности.
 - ProxyJump (1 hop) гарантированно; цепочки (N hops) опционально.
@@ -97,15 +114,18 @@ Web-версия работает только через WebSSH Gateway:
 - Конфликты: улучшенный auto-merge по полям + UI для ручного merge.
 
 ## 5. Web Limitations (Explicit)
+
 - Нет agent forwarding в MVP.
 - Нет персистентных приватных ключей.
 - Нет фоновых “вечных” сессий и background reconnect.
 - Все SSH-сессии в Web идут только через WebSSH Gateway по WSS.
 
 ## 6. Функциональные требования (FR)
+
 Нотация: FR-###, приоритет: MUST/SHOULD/COULD.
 
 ### 6.1 Каталог хостов
+
 - FR-001 (MUST) CRUD Host (создать/редактировать/удалить с tombstone).
 - FR-002 (MUST) Поиск по title/hostname/username/tags.
 - FR-003 (MUST) Теги, избранное, сортировки.
@@ -115,17 +135,20 @@ Web-версия работает только через WebSSH Gateway:
 - FR-007 (SHOULD) Расширенные SSH options (ciphers/KEX/MAC) — v1.
 
 ### 6.2 Ключи и секреты
+
 - FR-020 (MUST) Импорт ключей: OpenSSH (Ed25519), хранение приватного ключа в secure storage.
 - FR-021 (SHOULD) Генерация Ed25519 (desktop).
 - FR-022 (COULD) RSA/PEM/PPK импорт/конвертация (desktop) — v1.
 - FR-023 (MUST) Passphrase поддержка (если ключ зашифрован).
 - FR-024 (MUST) “Секреты не логируются” (password, key bytes, decrypted blobs).
 
-**Политика синка ключей**
+## Политика синка ключей
+
 - FR-025 (MUST) По умолчанию приватные ключи НЕ синхронизируются.
 - FR-026 (COULD) Опция “Sync private keys inside E2EE vault” (v1/v2) — только при явном включении и повторной аутентификации (master password).
 
 ### 6.3 Терминал/SSH-сессии
+
 - FR-040 (MUST) Поддержка интерактивного PTY: stdin/stdout, resize, exit status.
 - FR-041 (MUST) UTF-8 корректно.
 - FR-042 (MUST) Clipboard: copy/paste, bracketed paste (desktop/web).
@@ -133,22 +156,26 @@ Web-версия работает только через WebSSH Gateway:
 - FR-044 (COULD) Запись сессии без секретов (desktop) — v1.
 
 ### 6.4 Host key verification (anti-MITM)
+
 - FR-060 (MUST) Режимы: strict / accept-new / ask.
 - FR-061 (MUST) При смене fingerprint: блокировать (strict) или требовать явного подтверждения.
 - FR-062 (MUST) Хранить known_hosts (в vault), поддержка pinned.
 
 ### 6.5 SFTP/SCP
+
 - FR-080 (MUST v1) SFTP: list/get/put/mkdir/rm/rename/chmod.
 - FR-081 (SHOULD v1) Resume/download progress.
 - FR-082 (COULD) SCP совместимость — v2/опционально.
 
 ### 6.6 Forwarding/Tunnels
+
 - FR-100 (MUST v1 desktop) Local forwarding.
 - FR-101 (SHOULD v1 desktop) Dynamic SOCKS5.
 - FR-102 (COULD) Remote forwarding — v1+ по мере ограничений.
 - FR-103 (SHOULD v1) UI активных туннелей и автозапуск.
 
 ### 6.7 Импорт/экспорт
+
 - FR-120 (MUST MVP) Импорт минимального набора `~/.ssh/config`:
   Host, HostName, User, Port, IdentityFile, ProxyJump (1 hop).
 - FR-121 (SHOULD v1) Поддержка patterns и LocalForward/RemoteForward.
@@ -156,13 +183,15 @@ Web-версия работает только через WebSSH Gateway:
 - FR-123 (MUST) Экспорт в JSON (backup) + encrypted backup.
 
 ### 6.8 Синхронизация (E2EE)
-- FR-140 (MUST) E2EE по умолчанию для синхронизируемых данных (hosts/snippets/ui_settings).
+
+- FR-140 (MUST) E2EE по умолчанию для синхронизируемых данных (hosts/snippets/ui_settings/known_hosts).
 - FR-141 (MUST) Сервер хранит только encrypted blobs и метаданные (не расшифровывает).
 - FR-142 (MUST) Синк инкрементальный (pull/push по курсорам).
 - FR-143 (MUST) Tombstones для удаления.
 - FR-144 (MVP MUST) Конфликты: auto-merge по полям где возможно + fallback LWW; ручной merge UI — v1.
 
 ### 6.9 WebSSH Gateway
+
 - FR-160 (MUST) WSS соединение браузера к gateway.
 - FR-161 (MUST) Gateway устанавливает SSH и стримит I/O.
 - FR-162 (MUST) Лимиты: длительность/байты/конкурентность на пользователя/девайс.
@@ -171,6 +200,7 @@ Web-версия работает только через WebSSH Gateway:
 - FR-165 (MUST) Gateway не принимает `stdin` до состояния `READY` и даёт явные `error` коды при нарушении.
 
 ## 7. Нефункциональные требования (NFR)
+
 - NFR-001 (MUST) Секреты не попадают в логи, дампы (best effort), telemetry.
 - NFR-002 (SHOULD) Desktop старт < 2s (цель), Web TTI < 2.5s (цель).
 - NFR-003 (MUST) Надёжность: keepalive, настраиваемый reconnect (desktop/web).
@@ -180,6 +210,7 @@ Web-версия работает только через WebSSH Gateway:
 - NFR-007 (MUST) Rate limiting на sync-api и gateway.
 
 ## 8. FR Traceability (MVP)
+
 | FR      | Desktop | Mobile | Web | Gateway | Core |
 |--------|--------|--------|-----|--------|------|
 | FR-001 | ✅     | ✅     | ✅  | ❌     | ✅   |
@@ -190,8 +221,11 @@ Web-версия работает только через WebSSH Gateway:
 | FR-165 | ❌     | ❌     | ✅  | ✅     | ✅   |
 
 ## 9. Данные и форматы
+
 ### 9.1 Логическая модель (минимум)
+
 Host:
+
 - id UUID
 - title, tags[], favorite
 - hostname, port, username
@@ -202,6 +236,7 @@ Host:
 - version (int), deleted (bool tombstone)
 
 Key:
+
 - id UUID
 - name, type (ed25519|rsa)
 - publicKey, fingerprint
@@ -209,13 +244,16 @@ Key:
 - createdAt
 
 Snippet:
+
 - id, title, body, tags[], scope, createdAt, updatedAt, version, deleted
 
 KnownHost:
+
 - id, hostPattern, keyType, publicKey, fingerprint
 - pinned bool, addedAt, lastSeenAt
 
 ### 9.2 Vault криптосхема (минимум)
+
 - KDF: Argon2id (параметры версионируются: kdfParamsVersion)
 - Cipher suite: AES-256-GCM или ChaCha20-Poly1305 (cipherSuiteVersion)
 - Структура blob:
@@ -224,22 +262,27 @@ KnownHost:
 - Миграции: read old → write new; отказ при несовместимости с понятной ошибкой.
 
 ## 10. Sync протокол (высокий уровень)
-Коллекции: hosts, snippets, known_hosts (локально в MVP; синк опционально), ui_settings.
+
+Коллекции: hosts, snippets, known_hosts, ui_settings.
 
 Сервер хранит:
+
 - encrypted blobs
 - метаданные: entityId, entityType, revision, deviceId, serverSeq, serverTime, tombstone
 
 Курсоры:
+
 - cursor = serverSeq per user (монотонный, серверный)
 - клиент запоминает lastServerSeq и делает pull “после”
 
 Конфликтность:
+
 - Auto-merge по полям (если изменения не пересекаются)
 - Иначе fallback LWW, где “последнее” определяется serverTime/serverSeq, а не часами устройства.
 - Ручной merge UI — v1.
 
 Эндпоинты:
+
 - POST /auth/register|login|refresh
 - GET /sync/state
 - POST /sync/push (batch)
@@ -247,6 +290,7 @@ KnownHost:
 - POST /sync/resolve (v1+)
 
 ## 11. Definition of Done (DoD)
+
 - тесты (unit + интеграционные для core; smoke e2e для apps);
 - отсутствие секретов в логах/трассировках;
 - миграции данных и версионирование форматов;
@@ -254,6 +298,7 @@ KnownHost:
 - сборки проходят CI на целевых платформах.
 
 ## 12. Acceptance Criteria (примеры)
+
 - AC-001 Импорт `~/.ssh/config` создаёт Host записи (HostName/User/Port/IdentityFile/ProxyJump 1 hop) и позволяет подключиться.
 - AC-002 При смене host key в strict режиме подключение блокируется до подтверждения.
 - AC-003 Изменения хостов синхронизируются между двумя устройствами через E2EE (сервер не видит содержимого).
@@ -261,6 +306,7 @@ KnownHost:
 - AC-005 В Web MVP приватный ключ не сохраняется персистентно и не попадает в логи.
 
 ## 13. Документация и агентские логи
+
 - Основная управленческая документация хранится в `docs/`.
 - `docs/agent-orchestration.md` — дерево этапов, роли, критерии завершения и журнал этапов.
 - `docs/decision-log.md` — журнал ключевых решений (append-only).
