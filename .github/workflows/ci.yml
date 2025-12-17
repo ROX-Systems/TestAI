@@ -1,0 +1,193 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    name: Detect manifests
+    runs-on: ubuntu-latest
+    outputs:
+      has_rust: ${{ steps.detect.outputs.has_rust }}
+      has_node: ${{ steps.detect.outputs.has_node }}
+      has_flutter: ${{ steps.detect.outputs.has_flutter }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if find core server -name Cargo.toml -print -quit | grep -q .; then
+            echo "has_rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_rust=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if find apps packages -name package.json -print -quit | grep -q .; then
+            echo "has_node=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_node=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if find apps -name pubspec.yaml -print -quit | grep -q .; then
+            echo "has_flutter=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_flutter=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  secret_scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Secret Scanning (TruffleHog)
+        uses: trufflesecurity/trufflehog@v3.68.4
+        with:
+          extra_args: --results=verified,unknown
+
+  rust:
+    name: Rust checks
+    needs: detect
+    if: ${{ needs.detect.outputs.has_rust == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: taiki-e/install-action@cargo-audit
+      - name: Rust fmt/clippy/test/audit
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          dirs=()
+
+          if [ -f core/Cargo.toml ]; then
+            dirs+=("core")
+          else
+            while IFS= read -r -d '' f; do
+              dirs+=("$(dirname "$f")")
+            done < <(find core -mindepth 2 -maxdepth 2 -name Cargo.toml -print0)
+          fi
+
+          if [ -f server/Cargo.toml ]; then
+            dirs+=("server")
+          else
+            while IFS= read -r -d '' f; do
+              dirs+=("$(dirname "$f")")
+            done < <(find server -mindepth 2 -maxdepth 2 -name Cargo.toml -print0)
+          fi
+
+          if [ ${#dirs[@]} -eq 0 ]; then
+            echo "No Cargo.toml found under core/ or server/. Skipping."
+            exit 0
+          fi
+
+          for dir in "${dirs[@]}"; do
+            echo "::group::Rust checks ($dir)"
+            (cd "$dir" && cargo fmt --check)
+            (cd "$dir" && cargo clippy --all-targets -- -D warnings)
+            (cd "$dir" && cargo test --all-targets)
+
+            if [ ! -f "$dir/Cargo.lock" ]; then
+              echo "Missing Cargo.lock in $dir (policy: lockfiles required)"
+              exit 1
+            fi
+            (cd "$dir" && cargo audit)
+
+            echo "::endgroup::"
+          done
+
+  node:
+    name: Node/TS checks
+    needs: detect
+    if: ${{ needs.detect.outputs.has_node == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: ESLint/Typecheck/Test/Audit
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          dirs=()
+          while IFS= read -r -d '' f; do
+            dirs+=("$(dirname "$f")")
+          done < <(find apps packages -name package.json -print0)
+
+          if [ ${#dirs[@]} -eq 0 ]; then
+            echo "No package.json found under apps/ or packages/. Skipping."
+            exit 0
+          fi
+
+          for dir in "${dirs[@]}"; do
+            echo "::group::Node checks ($dir)"
+            (
+              cd "$dir"
+
+              if [ ! -f package-lock.json ]; then
+                echo "Missing package-lock.json in $dir (policy: lockfiles required)"
+                exit 1
+              fi
+
+              npm ci
+              npm run lint --if-present
+              npm run typecheck --if-present
+              npm test --if-present
+              npm audit --audit-level=high
+            )
+            echo "::endgroup::"
+          done
+
+  flutter:
+    name: Flutter checks
+    needs: detect
+    if: ${{ needs.detect.outputs.has_flutter == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Analyze/Test
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          dirs=()
+          while IFS= read -r -d '' f; do
+            dirs+=("$(dirname "$f")")
+          done < <(find apps -name pubspec.yaml -print0)
+
+          if [ ${#dirs[@]} -eq 0 ]; then
+            echo "No pubspec.yaml found under apps/. Skipping."
+            exit 0
+          fi
+
+          for dir in "${dirs[@]}"; do
+            echo "::group::Flutter checks ($dir)"
+            (cd "$dir" && flutter pub get)
+            (cd "$dir" && flutter analyze)
+            (cd "$dir" && flutter test)
+
+            if [ ! -f "$dir/pubspec.lock" ]; then
+              echo "Missing pubspec.lock in $dir (policy: lockfiles required)"
+              exit 1
+            fi
+
+            echo "::endgroup::"
+          done
