@@ -88,6 +88,7 @@ Web-версия работает только через WebSSH Gateway:
 
 - Окончания строк фиксируем через `.gitattributes` (в т.ч. `*.md`, `*.rs`, `*.toml`, `*.yml|*.yaml`, `Cargo.lock`) — в git всегда `LF`.
 - Для читабельного `git diff` в Windows-консоли (без кракозябр Unicode) перед просмотром диффа переключать вывод в UTF-8 (`chcp 65001`; при необходимости также задать UTF-8 output encoding в PowerShell).
+- Интеграционные контейнерные тесты (OpenSSH): локально Podman, в CI Docker (см. `docs/decision-log.md` D-005).
 
 ## 4. Релизные границы (очень важно)
 
