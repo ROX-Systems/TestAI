@@ -1,6 +1,15 @@
 # OS
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
+.vs/
+.claude/
+.cline/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
 
 # Rust
 /target/
