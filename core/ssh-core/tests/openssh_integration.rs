@@ -73,6 +73,32 @@ fn wait_ssh_banner(host: &str, port: u16, max_wait: Duration) {
     }
 }
 
+async fn connect_with_retry(
+    host: &str,
+    port: u16,
+    user: &str,
+) -> Result<SshSession, ssh_core::SshError> {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+
+    loop {
+        let attempt_timeout_ms = 8_000;
+        match SshSession::connect(host, port, user, attempt_timeout_ms).await {
+            Ok(s) => return Ok(s),
+            Err(e) => {
+                if !e.retryable || e.code != SshErrorCode::ConnectFailed {
+                    return Err(e);
+                }
+
+                if tokio::time::Instant::now() >= deadline {
+                    return Err(e);
+                }
+
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
+        }
+    }
+}
+
 struct Container {
     runtime: String,
     name: String,
@@ -166,7 +192,7 @@ async fn it_accept_new_accept_once_and_pty_resize() {
     let port = pick_free_port();
     let _c = start_openssh_container(port, "ituser", "itpass");
 
-    let mut s1 = SshSession::connect("127.0.0.1", port, "ituser", 15_000)
+    let mut s1 = connect_with_retry("127.0.0.1", port, "ituser")
         .await
         .unwrap();
 
@@ -200,7 +226,7 @@ async fn it_accept_new_accept_once_and_pty_resize() {
 
     s1.disconnect().await.unwrap();
 
-    let mut s2 = SshSession::connect("127.0.0.1", port, "ituser", 15_000)
+    let mut s2 = connect_with_retry("127.0.0.1", port, "ituser")
         .await
         .unwrap();
 
@@ -229,7 +255,7 @@ async fn it_strict_changed_hostkey_blocks() {
     let port = pick_free_port();
     let c1 = start_openssh_container(port, "ituser", "itpass");
 
-    let mut s1 = SshSession::connect("127.0.0.1", port, "ituser", 15_000)
+    let mut s1 = connect_with_retry("127.0.0.1", port, "ituser")
         .await
         .unwrap();
     s1.verify_host_key(HostKeyPolicy::AcceptNew, None)
@@ -242,7 +268,7 @@ async fn it_strict_changed_hostkey_blocks() {
 
     let _c2 = start_openssh_container(port, "ituser", "itpass");
 
-    let mut s2 = SshSession::connect("127.0.0.1", port, "ituser", 15_000)
+    let mut s2 = connect_with_retry("127.0.0.1", port, "ituser")
         .await
         .unwrap();
 
