@@ -4,6 +4,7 @@ use ssh_core::{
     SshState,
 };
 use std::env;
+use std::io::Read;
 use std::net::{TcpListener, TcpStream};
 use std::process::{Command, Output};
 use std::thread;
@@ -52,14 +53,21 @@ fn pick_free_port() -> u16 {
     port
 }
 
-fn wait_port_open(host: &str, port: u16, max_wait: Duration) {
+fn wait_ssh_banner(host: &str, port: u16, max_wait: Duration) {
     let start = Instant::now();
     loop {
-        if TcpStream::connect((host, port)).is_ok() {
-            return;
+        if let Ok(mut stream) = TcpStream::connect((host, port)) {
+            let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+            let mut buf = [0u8; 64];
+
+            if let Ok(n) = stream.read(&mut buf) {
+                if n > 0 && buf[..n].starts_with(b"SSH-") {
+                    return;
+                }
+            }
         }
         if start.elapsed() > max_wait {
-            panic!("port {host}:{port} not open after {max_wait:?}");
+            panic!("ssh banner not ready on {host}:{port} after {max_wait:?}");
         }
         thread::sleep(Duration::from_millis(200));
     }
@@ -117,7 +125,7 @@ fn start_openssh_container(host_port: u16, username: &str, password: &str) -> Co
         );
     }
 
-    wait_port_open("127.0.0.1", host_port, Duration::from_secs(20));
+    wait_ssh_banner("127.0.0.1", host_port, Duration::from_secs(30));
 
     Container { runtime, name }
 }
