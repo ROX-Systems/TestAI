@@ -50,6 +50,8 @@ Web-версия работает только через WebSSH Gateway:
 - Rust: `ssh-core` (SSH PTY, SFTP, forwarding, host key verify, ssh_config parsing)
 - SSH библиотека: `russh` (см. `docs/decision-log.md` D-001)
 - Отпечаток ключа хоста: SHA256 (как в OpenSSH) — `sha2` + `base64`.
+- Таймаут `SshSession::connect(..., timeout_ms)`: реализован через `tokio::time` (включена feature `tokio/time`).
+- Поток событий `ssh-core`: при `subscribe_events()` новый подписчик получает snapshot текущего состояния (`Status{state}`), и если состояние `HostKeyPrompt`, то также текущий `HostKeyPrompt{fingerprint, reason}` (чтобы не терять prompt при поздней подписке).
 - Rust: `vault` (E2EE, KDF, cipher suite, версия форматов)
 - Rust: `sync-client` (oplog, pull/push, курсоры, конфликты)
 
@@ -90,6 +92,9 @@ Web-версия работает только через WebSSH Gateway:
 - Окончания строк фиксируем через `.gitattributes` (в т.ч. `*.md`, `*.rs`, `*.toml`, `*.yml|*.yaml`, `Cargo.lock`) — в git всегда `LF`.
 - Для читабельного `git diff` в Windows-консоли (без кракозябр Unicode) перед просмотром диффа переключать вывод в UTF-8 (`chcp 65001`; при необходимости также задать UTF-8 output encoding в PowerShell).
 - Интеграционные контейнерные тесты (OpenSSH): локально Podman, в CI Docker (см. `docs/decision-log.md` D-005).
+- Интеграционные тесты `ssh-core` (OpenSSH контейнер) включаются через `SSH_IT_ENABLE=1`.
+- Рантайм контейнеров для тестов: `SSH_IT_RUNTIME=podman|docker` (по умолчанию: Podman если доступен, иначе Docker).
+- Образ OpenSSH для тестов: `SSH_IT_IMAGE` (по умолчанию: `lscr.io/linuxserver/openssh-server:latest`).
 - `cargo audit`: конфиг в `core/.cargo/audit.toml` (временно игнорируем `RUSTSEC-2023-0071`, т.к. для `rsa` нет fixed upgrade).
 
 ## 4. Релизные границы (очень важно)
