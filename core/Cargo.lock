@@ -1491,6 +1491,7 @@ dependencies = [
  "russh-keys",
  "secrecy",
  "sha2",
+ "ssh-key",
  "tokio",
 ]
 
