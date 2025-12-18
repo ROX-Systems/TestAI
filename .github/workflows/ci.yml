@@ -98,7 +98,12 @@ jobs:
             echo "::group::Rust checks ($dir)"
             (cd "$dir" && cargo fmt --check)
             (cd "$dir" && cargo clippy --all-targets -- -D warnings)
-            (cd "$dir" && cargo test --all-targets)
+
+            if [ "$dir" = "core" ]; then
+              (cd "$dir" && SSH_IT_ENABLE=1 SSH_IT_RUNTIME=docker cargo test --all-targets)
+            else
+              (cd "$dir" && cargo test --all-targets)
+            fi
 
             if [ ! -f "$dir/Cargo.lock" ]; then
               echo "Missing Cargo.lock in $dir (policy: lockfiles required)"
