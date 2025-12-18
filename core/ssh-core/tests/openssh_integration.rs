@@ -1,5 +1,8 @@
 use secrecy::SecretString;
-use ssh_core::{HostKeyDecision, HostKeyPolicy, KnownHostEntry, Pty, SshErrorCode, SshEvent, SshSession, SshState};
+use ssh_core::{
+    HostKeyDecision, HostKeyPolicy, KnownHostEntry, Pty, SshErrorCode, SshEvent, SshSession,
+    SshState,
+};
 use std::env;
 use std::net::{TcpListener, TcpStream};
 use std::process::{Command, Output};
@@ -79,7 +82,8 @@ fn start_openssh_container(host_port: u16, username: &str, password: &str) -> Co
     let runtime = runtime();
     let name = format!("ssh-it-{}", random_suffix());
 
-    let image = env::var("SSH_IT_IMAGE").unwrap_or_else(|_| "lscr.io/linuxserver/openssh-server:latest".to_string());
+    let image = env::var("SSH_IT_IMAGE")
+        .unwrap_or_else(|_| "lscr.io/linuxserver/openssh-server:latest".to_string());
 
     let port_arg = format!("{host_port}:2222");
     let user_arg = format!("USER_NAME={username}");
@@ -87,23 +91,23 @@ fn start_openssh_container(host_port: u16, username: &str, password: &str) -> Co
 
     let mut cmd = Command::new(&runtime);
     cmd.args([
-            "run",
-            "-d",
-            "--rm",
-            "--name",
-            &name,
-            "-p",
-            &port_arg,
-            "-e",
-            "PASSWORD_ACCESS=true",
-            "-e",
-            &user_arg,
-            "-e",
-            &pass_arg,
-            "-e",
-            "SUDO_ACCESS=false",
-            &image,
-        ]);
+        "run",
+        "-d",
+        "--rm",
+        "--name",
+        &name,
+        "-p",
+        &port_arg,
+        "-e",
+        "PASSWORD_ACCESS=true",
+        "-e",
+        &user_arg,
+        "-e",
+        &pass_arg,
+        "-e",
+        "SUDO_ACCESS=false",
+        &image,
+    ]);
     let out = player_cmd(&mut cmd);
 
     if !out.status.success() {
@@ -158,9 +162,12 @@ async fn it_accept_new_accept_once_and_pty_resize() {
         .await
         .unwrap();
 
-    let decision = s1.verify_host_key(HostKeyPolicy::AcceptNew, None).await.unwrap();
+    let decision = s1
+        .verify_host_key(HostKeyPolicy::AcceptNew, None)
+        .await
+        .unwrap();
     assert!(matches!(decision, HostKeyDecision::Accepted));
-    assert_eq!(s1.is_ready(), true);
+    assert!(s1.is_ready());
 
     let fp = s1.server_fingerprint().expect("fingerprint");
 
@@ -200,7 +207,7 @@ async fn it_accept_new_accept_once_and_pty_resize() {
         .unwrap();
 
     assert!(matches!(decision2, HostKeyDecision::Unchanged));
-    assert_eq!(s2.is_ready(), true);
+    assert!(s2.is_ready());
 
     s2.disconnect().await.unwrap();
 }
@@ -217,7 +224,9 @@ async fn it_strict_changed_hostkey_blocks() {
     let mut s1 = SshSession::connect("127.0.0.1", port, "ituser", 15_000)
         .await
         .unwrap();
-    s1.verify_host_key(HostKeyPolicy::AcceptNew, None).await.unwrap();
+    s1.verify_host_key(HostKeyPolicy::AcceptNew, None)
+        .await
+        .unwrap();
     let fp_a = s1.server_fingerprint().expect("fingerprint");
     s1.disconnect().await.unwrap();
     drop(c1);
@@ -235,12 +244,15 @@ async fn it_strict_changed_hostkey_blocks() {
     let res = s2
         .verify_host_key(
             HostKeyPolicy::Strict,
-            Some(KnownHostEntry {
-                fingerprint: fp_a,
-            }),
+            Some(KnownHostEntry { fingerprint: fp_a }),
         )
         .await;
 
     assert!(matches!(res, Err(e) if e.code == SshErrorCode::HostkeyChanged));
-    assert_eq!(s2.subscribe_events().try_recv().ok(), Some(SshEvent::Status { state: SshState::Closed }));
+    assert_eq!(
+        s2.subscribe_events().try_recv().ok(),
+        Some(SshEvent::Status {
+            state: SshState::Closed
+        })
+    );
 }

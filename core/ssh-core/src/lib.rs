@@ -7,9 +7,9 @@ use base64::Engine as _;
 use russh::client;
 use russh::{Channel, CryptoVec, Disconnect};
 use secrecy::{ExposeSecret, SecretString};
-use ssh_key::HashAlg;
 #[cfg(test)]
 use sha2::{Digest, Sha256};
+use ssh_key::HashAlg;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
@@ -57,9 +57,7 @@ impl client::Handler for ClientHandler {
         'life1: 'async_trait,
     {
         Box::pin(async move {
-            let fingerprint = server_public_key
-                .fingerprint(HashAlg::Sha256)
-                .to_string();
+            let fingerprint = server_public_key.fingerprint(HashAlg::Sha256).to_string();
             if let Some(tx) = self
                 .host_key_fingerprint_tx
                 .lock()
@@ -454,7 +452,11 @@ impl SshSession {
             }
             Err(_) => {
                 let _ = handle.disconnect(Disconnect::ByApplication, "", "").await;
-                return Err(SshError::new(SshErrorCode::Timeout, "Connect timeout", true));
+                return Err(SshError::new(
+                    SshErrorCode::Timeout,
+                    "Connect timeout",
+                    true,
+                ));
             }
         };
 
@@ -555,10 +557,7 @@ impl SshSession {
         if !self.is_ready() {
             return Err(SshError::not_ready());
         }
-        let handle = self
-            .handle
-            .as_ref()
-            .ok_or_else(SshError::not_ready)?;
+        let handle = self.handle.as_ref().ok_or_else(SshError::not_ready)?;
         let channel = self
             .channel
             .as_ref()
@@ -645,16 +644,13 @@ impl SshSession {
             .handle
             .as_ref()
             .ok_or_else(|| SshError::new(SshErrorCode::InternalError, "Missing handle", false))?;
-        let channel = handle
-            .channel_open_session()
-            .await
-            .map_err(|e| {
-                SshError::new(
-                    SshErrorCode::InternalError,
-                    format!("channel_open_session failed: {e:?}"),
-                    true,
-                )
-            })?;
+        let channel = handle.channel_open_session().await.map_err(|e| {
+            SshError::new(
+                SshErrorCode::InternalError,
+                format!("channel_open_session failed: {e:?}"),
+                true,
+            )
+        })?;
 
         channel
             .request_pty(true, &pty.term, pty.cols as u32, pty.rows as u32, 0, 0, &[])
@@ -704,9 +700,7 @@ impl SshSession {
             let _ = channel.close().await;
         }
         if let Some(handle) = self.handle.take() {
-            let _ = handle
-                .disconnect(Disconnect::ByApplication, "", "")
-                .await;
+            let _ = handle.disconnect(Disconnect::ByApplication, "", "").await;
         }
         self.transition(SshState::Closing)?;
         self.transition(SshState::Closed)?;
@@ -784,7 +778,9 @@ mod tests {
 
         assert!(matches!(
             rx.try_recv(),
-            Ok(SshEvent::Status { state: SshState::Init })
+            Ok(SshEvent::Status {
+                state: SshState::Init
+            })
         ));
 
         session.transition(SshState::Connecting).unwrap();
